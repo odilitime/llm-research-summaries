@@ -1,4 +1,4 @@
-# On-Policy RL Meets Off-Policy Experts: Harmonizing Supervised Fine-Tuning and Global Weighting via Dynamic Weighting
+# On-Policy RL Meets Off-Policy Experts: Harmonizing Supervised Fine-Tuning and Reinforcement Learning via Dynamic Weighting
 
 **Source**: [arXiv:2508.11408](https://arxiv.org/html/2508.11408)
 

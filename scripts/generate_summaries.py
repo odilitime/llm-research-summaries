@@ -37,7 +37,7 @@ PAPERS = [
 
 
 def fetch_arxiv_meta(arxiv_id):
-    url = f"http://export.arxiv.org/api/query?id_list={arxiv_id}&max_results=1"
+    url = f"https://export.arxiv.org/api/query?id_list={arxiv_id}&max_results=1"
     req = urllib.request.Request(url, headers={"User-Agent": "SummaryBot/1.0"})
     resp = urllib.request.urlopen(req, timeout=30)
     entry = ET.fromstring(resp.read()).find("a:entry", NS)
@@ -48,7 +48,12 @@ def fetch_arxiv_meta(arxiv_id):
         entry.find("a:summary", NS).text.strip().replace("\n", " ").replace("  ", " ")
     )
     authors = [a.find("a:name", NS).text for a in entry.findall("a:author", NS)]
-    cats = [c.get("term") for c in entry.findall("arxiv:primary_category", NS)]
+    cats = [c.get("term") for c in entry.findall("a:category", NS)]
+    primary = entry.find("arxiv:primary_category", NS)
+    if primary is not None:
+        primary_term = primary.get("term")
+        if primary_term and primary_term not in cats:
+            cats.insert(0, primary_term)
     published = entry.find("a:published", NS).text[:10]
     sections = []
     try:
@@ -255,14 +260,20 @@ def generate_one(arxiv_id, target_dir, model=MODEL, force=False):
             print(f"  ⚠️  arxiv ID not found in generated content — injected")
             # Already handled by clean_output
 
-        # Save to repo directory
+        # Check if output exists (skip unless --force)
         fname = f"{slugify(meta['title'])}_{arxiv_id}.md"
         repo_path = REPO_BASE / target_dir / fname
+        if repo_path.exists() and not force:
+            print(f"  ⏭ Skipping, already exists (use --force to overwrite)")
+            return repo_path.read_text(encoding="utf-8")
+
+        # Save to repo directory
+        repo_path.parent.mkdir(parents=True, exist_ok=True)
         repo_path.write_text(content, encoding="utf-8")
         print(f"  → repo/{target_dir}/{fname}")
 
         # Save backup
-        BACKUP_DIR.mkdir(exist_ok=True)
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
         backup = BACKUP_DIR / fname
         backup.write_text(content, encoding="utf-8")
         print(f"  → backup/{fname}")
@@ -307,10 +318,28 @@ if __name__ == "__main__":
     parser.add_argument("--model", default=MODEL, help="Ollama model to use")
     parser.add_argument("--force", action="store_true", help="Regenerate existing")
     parser.add_argument(
+        "--repo-base",
+        default=str(REPO_BASE),
+        help="Path to llm-research-summaries repo (default: ~/Sites/llm-research-summaries)",
+    )
+    parser.add_argument(
+        "--backup-dir",
+        default=str(BACKUP_DIR),
+        help="Backup directory for generated summaries",
+    )
+    parser.add_argument(
         "--arxiv",
         help="Generate single paper by arxiv ID + target dir (comma sep: arxiv_id,target_dir)",
     )
     args = parser.parse_args()
+
+    # Apply overrides from CLI
+    if args.repo_base:
+        global REPO_BASE
+        REPO_BASE = Path(args.repo_base)
+    if args.backup_dir:
+        global BACKUP_DIR
+        BACKUP_DIR = Path(args.backup_dir)
 
     if args.arxiv:
         parts = args.arxiv.split(",")
